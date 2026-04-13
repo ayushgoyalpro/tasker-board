@@ -13,3 +13,7 @@ spring:
     mcp:
       server:
         enabled: false
+
+logging:
+  level:
+    org.hibernate: ERROR
