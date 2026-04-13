@@ -1,3 +1,15 @@
 spring:
   application:
     name: tasker
+  datasource:
+    url: jdbc:sqlite:${TASKER_DB_PATH:./tasker.db}
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  ai:
+    mcp:
+      server:
+        enabled: false

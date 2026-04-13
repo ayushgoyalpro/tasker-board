@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            padding: 16px 24px;
+            border-bottom: 1px solid #222;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        header h1 { font-size: 20px; font-weight: 600; color: #fff; }
+        .board {
+            display: flex;
+            gap: 16px;
+            padding: 20px 24px;
+            overflow-x: auto;
+            flex: 1;
+            align-items: flex-start;
+        }
+        .column {
+            background: #181818;
+            border: 1px solid #282828;
+            border-radius: 10px;
+            min-width: 300px;
+            max-width: 300px;
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 90px);
+        }
+        .column-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid #282828;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .column-header h2 {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #aaa;
+        }
+        .column-header .count {
+            font-size: 12px;
+            color: #555;
+            background: #222;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .column-actions { display: flex; gap: 4px; }
+        .cards {
+            padding: 8px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 40px;
+        }
+        .card {
+            background: #222;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: grab;
+            transition: border-color 0.15s, opacity 0.15s, transform 0.15s;
+        }
+        .card:hover { border-color: #444; }
+        .card.dragging { opacity: 0.4; transform: scale(0.95); }
+        .card.drag-over { border-color: #2563eb; border-style: dashed; }
+        .cards.drag-over-empty { border: 2px dashed #2563eb; border-radius: 8px; }
+        .card-title {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #eee;
+        }
+        .card-desc {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .status-badge {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .status-TODO { background: #2a2a00; color: #e8c300; }
+        .status-IN_PROGRESS { background: #002a2a; color: #00c8e8; }
+        .status-DONE { background: #002a00; color: #00e840; }
+        .card-actions {
+            display: flex;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .card:hover .card-actions { opacity: 1; }
+
+        .btn-icon {
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+        .btn-icon:hover { color: #ccc; background: #333; }
+        .btn-icon.danger:hover { color: #f55; }
+
+        .btn {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #444;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .btn:hover { background: #444; color: #fff; }
+        .btn-primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .btn-primary:hover { background: #1d4ed8; }
+
+        .add-card-form {
+            padding: 8px;
+            display: none;
+            flex-shrink: 0;
+        }
+        .add-card-form input,
+        .add-card-form textarea {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #e0e0e0;
+            font-size: 13px;
+            font-family: inherit;
+            margin-bottom: 6px;
+            outline: none;
+        }
+        .add-card-form input:focus,
+        .add-card-form textarea:focus {
+            border-color: #2563eb;
+        }
+        .add-card-form textarea { resize: vertical; min-height: 50px; }
+        .form-actions {
+            display: flex;
+            gap: 6px;
+            justify-content: flex-end;
+        }
+
+        .add-column {
+            min-width: 300px;
+            max-width: 300px;
+            border: 2px dashed #282828;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            cursor: pointer;
+            color: #555;
+            font-size: 14px;
+            transition: border-color 0.15s, color 0.15s;
+            flex-shrink: 0;
+        }
+        .add-column:hover { border-color: #444; color: #888; }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 24px;
+            width: 400px;
+            max-width: 90vw;
+        }
+        .modal h3 { margin-bottom: 16px; font-size: 16px; color: #fff; }
+        .modal input, .modal textarea {
+            width: 100%;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 8px 10px;
+            color: #e0e0e0;
+            font-size: 13px;
+            font-family: inherit;
+            margin-bottom: 10px;
+            outline: none;
+        }
+        .modal textarea { resize: vertical; min-height: 80px; }
+        .modal input:focus, .modal textarea:focus { border-color: #2563eb; }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Hi, Ayush</h1>
+</header>
+
+<div class="board" id="board"></div>
+
+<!-- Edit modal -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal">
+        <h3>Edit Ticket</h3>
+        <input type="hidden" id="editTicketId">
+        <input type="text" id="editTicketTitle" placeholder="Title">
+        <textarea id="editTicketDesc" placeholder="Description"></textarea>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveTicketEdit()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = '/api';
+    const statusCycle = { TODO: 'IN_PROGRESS', IN_PROGRESS: 'DONE', DONE: 'TODO' };
+    let draggedCard = null;
+    let addProjectVisible = false;
+
+    // --- Data fetching & rendering ---
+
+    async function loadBoard() {
+        const res = await fetch(`${API}/board`);
+        const projects = await res.json();
+        render(projects);
+    }
+
+    function render(projects) {
+        const board = document.getElementById('board');
+        board.innerHTML = '';
+
+        for (const project of projects) {
+            board.appendChild(renderColumn(project));
+        }
+
+        // "Add Project" button / form
+        if (addProjectVisible) {
+            board.appendChild(renderAddProjectForm());
+        } else {
+            const addBtn = document.createElement('div');
+            addBtn.className = 'add-column';
+            addBtn.textContent = '+ Add Project';
+            addBtn.onclick = () => { addProjectVisible = true; loadBoard(); };
+            board.appendChild(addBtn);
+        }
+
+        initDragAndDrop();
+    }
+
+    function renderColumn(project) {
+        const col = document.createElement('div');
+        col.className = 'column';
+        col.dataset.id = project.id;
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'column-header';
+        header.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;">
+                <h2>${esc(project.name)}</h2>
+                <span class="count">${project.tickets.length}</span>
+            </div>
+            <div class="column-actions">
+                <button class="btn-icon add-card-btn" title="Add ticket">+</button>
+                <button class="btn-icon danger delete-project-btn" title="Delete project">&times;</button>
+            </div>
+        `;
+        header.querySelector('.add-card-btn').onclick = () => showAddCard(col);
+        header.querySelector('.delete-project-btn').onclick = () => deleteProject(project.id);
+        col.appendChild(header);
+
+        // Cards
+        const cards = document.createElement('div');
+        cards.className = 'cards';
+        for (const ticket of project.tickets) {
+            cards.appendChild(renderCard(ticket));
+        }
+        col.appendChild(cards);
+
+        // Add card form (hidden)
+        const form = document.createElement('div');
+        form.className = 'add-card-form';
+        form.innerHTML = `
+            <input type="text" placeholder="Title" class="new-ticket-title">
+            <textarea placeholder="Description (optional)" class="new-ticket-desc"></textarea>
+            <div class="form-actions">
+                <button class="btn cancel-btn">Cancel</button>
+                <button class="btn btn-primary add-btn">Add</button>
+            </div>
+        `;
+        form.querySelector('.cancel-btn').onclick = () => { form.style.display = 'none'; };
+        form.querySelector('.add-btn').onclick = () => addCard(project.id, form);
+        col.appendChild(form);
+
+        return col;
+    }
+
+    function renderCard(ticket) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.dataset.id = ticket.id;
+        card.draggable = true;
+
+        const descHtml = ticket.description
+            ? `<div class="card-desc">${esc(ticket.description)}</div>`
+            : '';
+
+        card.innerHTML = `
+            <div class="card-title">${esc(ticket.title)}</div>
+            ${descHtml}
+            <div class="card-footer">
+                <button class="status-badge status-${ticket.status}">${ticket.status}</button>
+                <div class="card-actions">
+                    <button class="btn-icon edit-btn" title="Edit">&#9998;</button>
+                    <button class="btn-icon danger delete-btn" title="Delete">&times;</button>
+                </div>
+            </div>
+        `;
+
+        card.querySelector('.status-badge').onclick = () => cycleStatus(ticket.id, ticket.status);
+        card.querySelector('.edit-btn').onclick = () => openEditModal(ticket);
+        card.querySelector('.delete-btn').onclick = () => deleteTicket(ticket.id);
+
+        return card;
+    }
+
+    function renderAddProjectForm() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'add-column';
+        wrapper.style.cursor = 'default';
+        wrapper.innerHTML = `
+            <div style="width:100%;">
+                <input type="text" id="newProjectName" placeholder="Project name" style="
+                    width:100%;background:#1a1a1a;border:1px solid #333;border-radius:6px;
+                    padding:8px 10px;color:#e0e0e0;font-size:13px;outline:none;margin-bottom:8px;
+                ">
+                <div class="form-actions">
+                    <button class="btn" id="cancelProjectBtn">Cancel</button>
+                    <button class="btn btn-primary" id="addProjectBtn">Add</button>
+                </div>
+            </div>
+        `;
+        setTimeout(() => {
+            const input = document.getElementById('newProjectName');
+            if (input) input.focus();
+            document.getElementById('cancelProjectBtn').onclick = () => { addProjectVisible = false; loadBoard(); };
+            document.getElementById('addProjectBtn').onclick = addProject;
+        }, 0);
+        return wrapper;
+    }
+
+    // --- Actions ---
+
+    async function cycleStatus(id, current) {
+        await fetch(`${API}/tickets/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: statusCycle[current] })
+        });
+    }
+
+    function showAddCard(col) {
+        const form = col.querySelector('.add-card-form');
+        form.style.display = 'block';
+        form.querySelector('.new-ticket-title').focus();
+    }
+
+    async function addCard(projectId, form) {
+        const title = form.querySelector('.new-ticket-title').value.trim();
+        const description = form.querySelector('.new-ticket-desc').value.trim();
+        if (!title) return;
+        await fetch(`${API}/tickets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: String(projectId), title, description })
+        });
+    }
+
+    async function deleteTicket(id) {
+        if (!confirm('Delete this ticket?')) return;
+        await fetch(`${API}/tickets/${id}`, { method: 'DELETE' });
+    }
+
+    async function deleteProject(id) {
+        if (!confirm('Delete this project and all its tickets?')) return;
+        await fetch(`${API}/projects/${id}`, { method: 'DELETE' });
+    }
+
+    function openEditModal(ticket) {
+        document.getElementById('editTicketId').value = ticket.id;
+        document.getElementById('editTicketTitle').value = ticket.title;
+        document.getElementById('editTicketDesc').value = ticket.description || '';
+        document.getElementById('editModal').classList.add('active');
+        document.getElementById('editTicketTitle').focus();
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').classList.remove('active');
+    }
+
+    async function saveTicketEdit() {
+        const id = document.getElementById('editTicketId').value;
+        const title = document.getElementById('editTicketTitle').value.trim();
+        const description = document.getElementById('editTicketDesc').value.trim();
+        if (!title) return;
+        await fetch(`${API}/tickets/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description })
+        });
+        closeEditModal();
+    }
+
+    async function addProject() {
+        const input = document.getElementById('newProjectName');
+        const name = input.value.trim();
+        if (!name) return;
+        await fetch(`${API}/projects`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        addProjectVisible = false;
+    }
+
+    // --- Drag and drop ---
+
+    function initDragAndDrop() {
+        document.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('dragstart', e => {
+                draggedCard = card;
+                card.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('dragging');
+                document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+                document.querySelectorAll('.drag-over-empty').forEach(el => el.classList.remove('drag-over-empty'));
+                draggedCard = null;
+            });
+
+            card.addEventListener('dragover', e => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (draggedCard && card !== draggedCard && card.closest('.cards') === draggedCard.closest('.cards')) {
+                    card.classList.add('drag-over');
+                }
+            });
+
+            card.addEventListener('dragleave', () => {
+                card.classList.remove('drag-over');
+            });
+
+            card.addEventListener('drop', e => {
+                e.preventDefault();
+                card.classList.remove('drag-over');
+                if (!draggedCard || card === draggedCard) return;
+                const container = card.closest('.cards');
+                if (container !== draggedCard.closest('.cards')) return;
+                const cards = [...container.querySelectorAll('.card')];
+                const dragIdx = cards.indexOf(draggedCard);
+                const dropIdx = cards.indexOf(card);
+                if (dragIdx < dropIdx) {
+                    card.after(draggedCard);
+                } else {
+                    card.before(draggedCard);
+                }
+                persistOrder(container);
+            });
+        });
+
+        document.querySelectorAll('.cards').forEach(container => {
+            container.addEventListener('dragover', e => {
+                e.preventDefault();
+                if (draggedCard && container.querySelectorAll('.card:not(.dragging)').length === 0) {
+                    container.classList.add('drag-over-empty');
+                }
+            });
+            container.addEventListener('dragleave', () => {
+                container.classList.remove('drag-over-empty');
+            });
+            container.addEventListener('drop', e => {
+                e.preventDefault();
+                container.classList.remove('drag-over-empty');
+                if (!draggedCard || draggedCard.closest('.cards') !== container) return;
+                if (container.querySelectorAll('.card:not(.dragging)').length === 0) {
+                    container.appendChild(draggedCard);
+                    persistOrder(container);
+                }
+            });
+        });
+    }
+
+    async function persistOrder(container) {
+        const ids = [...container.querySelectorAll('.card')].map(c => parseInt(c.dataset.id));
+        await fetch(`${API}/tickets/reorder`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ids)
+        });
+    }
+
+    // --- SSE for real-time updates ---
+
+    function connectSSE() {
+        const es = new EventSource(`${API}/board/events`);
+        es.addEventListener('refresh', () => loadBoard());
+        es.onerror = () => {
+            es.close();
+            setTimeout(connectSSE, 3000);
+        };
+    }
+
+    // --- Utils ---
+
+    function esc(str) {
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    // --- Keyboard shortcuts ---
+    document.getElementById('editModal').addEventListener('click', function(e) {
+        if (e.target === this) closeEditModal();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeEditModal();
+    });
+
+    // --- Init ---
+    loadBoard();
+    connectSSE();
+</script>
+
+</body>
+</html>
