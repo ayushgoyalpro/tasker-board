@@ -9,12 +9,6 @@ spring:
     hibernate:
       ddl-auto: update
     open-in-view: false
-  ai:
-    mcp:
-      server:
-        name: tasker
-        description: Personal task board — manage projects and tickets
-        type: SYNC
 
 logging:
   level:
