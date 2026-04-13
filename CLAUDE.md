@@ -31,7 +31,8 @@ src/main/java/com/ayush/tasker/
 │   ├── ProjectController.java        # CRUD /api/projects
 │   └── TicketController.java         # CRUD /api/tickets, PUT /api/tickets/reorder
 └── service/
-    └── BoardEventService.java        # SSE emitter registry, broadcasts on mutations
+    ├── BoardEventService.java        # SSE emitter registry, broadcasts on mutations
+    └── TaskerTools.java              # MCP tool definitions (@Tool annotated)
 ```
 
 ## API Endpoints
@@ -70,6 +71,47 @@ All mutations broadcast an SSE refresh event.
 ./tasker.sh rebuild            # rebuild image + restart
 ```
 
-## Planned
+## MCP Server
 
-- Spring AI MCP server integration (`spring-ai-starter-mcp-server` dependency already present, currently disabled) — expose ticket CRUD as MCP tools so a Claude agent can manage the board.
+The app is an MCP server via `spring-ai-starter-mcp-server-webmvc` (SSE transport). The MCP endpoint is at `/sse`.
+
+### MCP Tools Exposed
+
+| Tool | Description |
+|------|-------------|
+| `listProjects` | List all projects with their tickets |
+| `createProject` | Create a new project (name, description?) |
+| `deleteProject` | Delete a project and all its tickets |
+| `createTicket` | Create a ticket in a project (projectId, title, description?) |
+| `updateTicket` | Update a ticket (ticketId, title?, description?, status?) |
+| `deleteTicket` | Delete a ticket |
+
+All MCP tool calls also broadcast SSE refresh events, so the web UI updates in real time when a Claude agent makes changes.
+
+### Connecting Claude Code
+
+Add to `~/.claude/claude_code_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "tasker": {
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```
+
+### Connecting Claude Desktop
+
+Add to Claude Desktop settings (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "tasker": {
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```

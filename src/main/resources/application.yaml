@@ -12,7 +12,9 @@ spring:
   ai:
     mcp:
       server:
-        enabled: false
+        name: tasker
+        description: Personal task board — manage projects and tickets
+        type: SYNC
 
 logging:
   level:
