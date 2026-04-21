@@ -46,6 +46,10 @@ public class TicketController {
                     if (body.containsKey("title")) ticket.setTitle(body.get("title"));
                     if (body.containsKey("description")) ticket.setDescription(body.get("description"));
                     if (body.containsKey("status")) ticket.setStatus(Status.valueOf(body.get("status")));
+                    if (body.containsKey("projectId")) {
+                        long newProjectId = Long.parseLong(body.get("projectId"));
+                        projectRepository.findById(newProjectId).ifPresent(ticket::setProject);
+                    }
                     var saved = ticketRepository.save(ticket);
                     boardEventService.broadcast();
                     return ResponseEntity.ok(saved);

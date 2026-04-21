@@ -40,7 +40,10 @@
             display: flex;
             flex-direction: column;
             max-height: calc(100vh - 90px);
+            transition: opacity 0.15s, transform 0.15s;
         }
+        .column.col-dragging { opacity: 0.4; transform: scale(0.97); }
+        .column.col-drag-over { border-color: #2563eb; }
         .column-header {
             padding: 14px 16px;
             border-bottom: 1px solid #282828;
@@ -49,12 +52,42 @@
             justify-content: space-between;
             flex-shrink: 0;
         }
+        .col-drag-handle {
+            cursor: grab;
+            color: #444;
+            font-size: 14px;
+            padding: 2px 4px;
+            border-radius: 4px;
+            flex-shrink: 0;
+            line-height: 1;
+            user-select: none;
+        }
+        .col-drag-handle:hover { color: #777; background: #222; }
         .column-header h2 {
             font-size: 14px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: #aaa;
+            cursor: pointer;
+            border-radius: 4px;
+            padding: 2px 4px;
+            margin: -2px -4px;
+        }
+        .column-header h2:hover { background: #222; color: #ccc; }
+        .column-header .name-input {
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #fff;
+            background: #111;
+            border: 1px solid #2563eb;
+            border-radius: 4px;
+            padding: 2px 6px;
+            outline: none;
+            width: 140px;
+            font-family: inherit;
         }
         .column-header .count {
             font-size: 12px;
@@ -82,7 +115,12 @@
         .card:hover { border-color: #444; }
         .card.dragging { opacity: 0.4; transform: scale(0.95); }
         .card.drag-over { border-color: #2563eb; border-style: dashed; }
-        .cards.drag-over-empty { border: 2px dashed #2563eb; border-radius: 8px; }
+        .cards.drag-over-zone {
+            background: rgba(37,99,235,0.06);
+            border-radius: 8px;
+            outline: 2px dashed #2563eb;
+            outline-offset: -2px;
+        }
         .card-title {
             font-size: 14px;
             font-weight: 500;
@@ -236,7 +274,7 @@
 
 <div class="board" id="board"></div>
 
-<!-- Edit modal -->
+<!-- Edit ticket modal -->
 <div class="modal-overlay" id="editModal">
     <div class="modal">
         <h3>Edit Ticket</h3>
@@ -253,7 +291,11 @@
 <script>
     const API = '/api';
     const statusCycle = { TODO: 'IN_PROGRESS', IN_PROGRESS: 'DONE', DONE: 'TODO' };
-    let draggedCard = null;
+
+    // Dragging state
+    let draggedCard = null;       // the card DOM element being dragged
+    let draggedCardProjectId = null;
+    let draggedColumn = null;     // the column DOM element being dragged
     let addProjectVisible = false;
 
     // --- Data fetching & rendering ---
@@ -294,23 +336,46 @@
         // Header
         const header = document.createElement('div');
         header.className = 'column-header';
-        header.innerHTML = `
-            <div style="display:flex;align-items:center;gap:8px;">
-                <h2>${esc(project.name)}</h2>
-                <span class="count">${project.tickets.length}</span>
-            </div>
-            <div class="column-actions">
-                <button class="btn-icon add-card-btn" title="Add ticket">+</button>
-                <button class="btn-icon danger delete-project-btn" title="Delete project">&times;</button>
-            </div>
+
+        // Drag handle for column reordering
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'col-drag-handle';
+        dragHandle.innerHTML = '&#8942;&#8942;'; // ⋮⋮
+        dragHandle.title = 'Drag to reorder';
+
+        // Project name — click to edit inline
+        const nameEl = document.createElement('h2');
+        nameEl.textContent = project.name;
+        nameEl.title = 'Click to rename';
+        nameEl.onclick = () => startEditProjectName(nameEl, project.id, project.name);
+
+        const count = document.createElement('span');
+        count.className = 'count';
+        count.textContent = project.tickets.length;
+
+        const nameGroup = document.createElement('div');
+        nameGroup.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
+        nameGroup.appendChild(dragHandle);
+        nameGroup.appendChild(nameEl);
+        nameGroup.appendChild(count);
+
+        const actions = document.createElement('div');
+        actions.className = 'column-actions';
+        actions.innerHTML = `
+            <button class="btn-icon add-card-btn" title="Add ticket">+</button>
+            <button class="btn-icon danger delete-project-btn" title="Delete project">&times;</button>
         `;
-        header.querySelector('.add-card-btn').onclick = () => showAddCard(col);
-        header.querySelector('.delete-project-btn').onclick = () => deleteProject(project.id);
+        actions.querySelector('.add-card-btn').onclick = () => showAddCard(col);
+        actions.querySelector('.delete-project-btn').onclick = () => deleteProject(project.id);
+
+        header.appendChild(nameGroup);
+        header.appendChild(actions);
         col.appendChild(header);
 
         // Cards
         const cards = document.createElement('div');
         cards.className = 'cards';
+        cards.dataset.projectId = project.id;
         for (const ticket of project.tickets) {
             cards.appendChild(renderCard(ticket));
         }
@@ -386,6 +451,41 @@
             document.getElementById('addProjectBtn').onclick = addProject;
         }, 0);
         return wrapper;
+    }
+
+    // --- Inline project name editing ---
+
+    function startEditProjectName(nameEl, projectId, currentName) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.value = currentName;
+
+        nameEl.replaceWith(input);
+        input.focus();
+        input.select();
+
+        async function commit() {
+            const newName = input.value.trim();
+            if (newName && newName !== currentName) {
+                // Optimistic local update before SSE refresh
+                input.replaceWith(nameEl);
+                nameEl.textContent = newName;
+                await fetch(`${API}/projects/${projectId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newName })
+                });
+            } else {
+                input.replaceWith(nameEl);
+            }
+        }
+
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+            if (e.key === 'Escape') { input.value = currentName; input.blur(); }
+        });
     }
 
     // --- Actions ---
@@ -465,68 +565,160 @@
     // --- Drag and drop ---
 
     function initDragAndDrop() {
+        // --- Card drag (within column + cross-column) ---
         document.querySelectorAll('.card').forEach(card => {
             card.addEventListener('dragstart', e => {
+                // Don't initiate card drag when grabbing the column handle
+                if (e.target.classList.contains('col-drag-handle')) { e.preventDefault(); return; }
                 draggedCard = card;
+                draggedCardProjectId = card.closest('.cards').dataset.projectId;
                 card.classList.add('dragging');
                 e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('type', 'card');
+                e.stopPropagation();
             });
 
             card.addEventListener('dragend', () => {
                 card.classList.remove('dragging');
                 document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-                document.querySelectorAll('.drag-over-empty').forEach(el => el.classList.remove('drag-over-empty'));
+                document.querySelectorAll('.drag-over-zone').forEach(el => el.classList.remove('drag-over-zone'));
                 draggedCard = null;
+                draggedCardProjectId = null;
             });
 
             card.addEventListener('dragover', e => {
+                if (!draggedCard) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
-                if (draggedCard && card !== draggedCard && card.closest('.cards') === draggedCard.closest('.cards')) {
-                    card.classList.add('drag-over');
-                }
+                if (card !== draggedCard) card.classList.add('drag-over');
             });
 
             card.addEventListener('dragleave', () => {
                 card.classList.remove('drag-over');
             });
 
-            card.addEventListener('drop', e => {
+            card.addEventListener('drop', async e => {
                 e.preventDefault();
+                e.stopPropagation();
                 card.classList.remove('drag-over');
                 if (!draggedCard || card === draggedCard) return;
-                const container = card.closest('.cards');
-                if (container !== draggedCard.closest('.cards')) return;
-                const cards = [...container.querySelectorAll('.card')];
-                const dragIdx = cards.indexOf(draggedCard);
-                const dropIdx = cards.indexOf(card);
-                if (dragIdx < dropIdx) {
-                    card.after(draggedCard);
+
+                const targetContainer = card.closest('.cards');
+                const sourceContainer = draggedCard.closest('.cards');
+                const targetProjectId = targetContainer.dataset.projectId;
+                const sourceProjectId = sourceContainer.dataset.projectId;
+
+                // Move card DOM into target container, before the drop target
+                targetContainer.insertBefore(draggedCard, card);
+
+                if (targetProjectId !== sourceProjectId) {
+                    // Cross-project move: update projectId then reorder both columns
+                    await fetch(`${API}/tickets/${draggedCard.dataset.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectId: targetProjectId })
+                    });
+                    await persistOrder(targetContainer);
+                    await persistOrder(sourceContainer);
                 } else {
-                    card.before(draggedCard);
+                    await persistOrder(targetContainer);
                 }
-                persistOrder(container);
             });
         });
 
+        // --- Cards container drag-over (for empty columns or bottom of list) ---
         document.querySelectorAll('.cards').forEach(container => {
             container.addEventListener('dragover', e => {
+                if (!draggedCard) return;
                 e.preventDefault();
-                if (draggedCard && container.querySelectorAll('.card:not(.dragging)').length === 0) {
-                    container.classList.add('drag-over-empty');
+                container.classList.add('drag-over-zone');
+            });
+
+            container.addEventListener('dragleave', e => {
+                // Only remove if leaving the container itself, not entering a child
+                if (!container.contains(e.relatedTarget)) {
+                    container.classList.remove('drag-over-zone');
                 }
             });
-            container.addEventListener('dragleave', () => {
-                container.classList.remove('drag-over-empty');
-            });
-            container.addEventListener('drop', e => {
+
+            container.addEventListener('drop', async e => {
                 e.preventDefault();
-                container.classList.remove('drag-over-empty');
-                if (!draggedCard || draggedCard.closest('.cards') !== container) return;
-                if (container.querySelectorAll('.card:not(.dragging)').length === 0) {
-                    container.appendChild(draggedCard);
-                    persistOrder(container);
+                container.classList.remove('drag-over-zone');
+                if (!draggedCard) return;
+
+                // If drop landed on a card child, that handler already ran — skip
+                if (e.target.closest('.card') && e.target.closest('.card') !== draggedCard) return;
+
+                const targetProjectId = container.dataset.projectId;
+                const sourceContainer = draggedCard.closest('.cards');
+                const sourceProjectId = sourceContainer.dataset.projectId;
+
+                container.appendChild(draggedCard);
+
+                if (targetProjectId !== sourceProjectId) {
+                    await fetch(`${API}/tickets/${draggedCard.dataset.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projectId: targetProjectId })
+                    });
+                    await persistOrder(container);
+                    await persistOrder(sourceContainer);
+                } else {
+                    await persistOrder(container);
                 }
+            });
+        });
+
+        // --- Column drag (reorder projects) ---
+        document.querySelectorAll('.col-drag-handle').forEach(handle => {
+            handle.addEventListener('mousedown', () => {
+                // Make the column draggable only while mousedown on handle
+                handle.closest('.column').draggable = true;
+            });
+        });
+
+        document.querySelectorAll('.column').forEach(col => {
+            col.addEventListener('dragstart', e => {
+                if (!col.draggable) return;
+                if (draggedCard) return; // card drag takes priority
+                draggedColumn = col;
+                col.classList.add('col-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('type', 'column');
+            });
+
+            col.addEventListener('dragend', () => {
+                col.draggable = false;
+                col.classList.remove('col-dragging');
+                document.querySelectorAll('.col-drag-over').forEach(el => el.classList.remove('col-drag-over'));
+                if (draggedColumn) {
+                    persistColumnOrder();
+                    draggedColumn = null;
+                }
+            });
+
+            col.addEventListener('dragover', e => {
+                if (!draggedColumn || col === draggedColumn || draggedCard) return;
+                e.preventDefault();
+                col.classList.add('col-drag-over');
+                const board = document.getElementById('board');
+                const cols = [...board.querySelectorAll('.column')];
+                const dragIdx = cols.indexOf(draggedColumn);
+                const overIdx = cols.indexOf(col);
+                if (dragIdx < overIdx) {
+                    col.after(draggedColumn);
+                } else {
+                    col.before(draggedColumn);
+                }
+            });
+
+            col.addEventListener('dragleave', () => {
+                col.classList.remove('col-drag-over');
+            });
+
+            col.addEventListener('drop', e => {
+                e.preventDefault();
+                col.classList.remove('col-drag-over');
             });
         });
     }
@@ -534,6 +726,15 @@
     async function persistOrder(container) {
         const ids = [...container.querySelectorAll('.card')].map(c => parseInt(c.dataset.id));
         await fetch(`${API}/tickets/reorder`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ids)
+        });
+    }
+
+    async function persistColumnOrder() {
+        const ids = [...document.querySelectorAll('.column')].map(c => parseInt(c.dataset.id));
+        await fetch(`${API}/projects/reorder`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(ids)

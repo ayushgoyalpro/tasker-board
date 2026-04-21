@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -39,6 +40,19 @@ public class ProjectController {
                     return ResponseEntity.ok(saved);
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/reorder")
+    public ResponseEntity<Void> reorder(@RequestBody List<Long> projectIds) {
+        for (int i = 0; i < projectIds.size(); i++) {
+            int order = i;
+            projectRepository.findById(projectIds.get(i)).ifPresent(project -> {
+                project.setDisplayOrder(order);
+                projectRepository.save(project);
+            });
+        }
+        boardEventService.broadcast();
+        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}")
