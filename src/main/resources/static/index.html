@@ -269,7 +269,7 @@
 <body>
 
 <header>
-    <h1>Hi, Ayush</h1>
+    <h1 id="greeting"></h1>
 </header>
 
 <div class="board" id="board"></div>
@@ -291,6 +291,14 @@
 <script>
     const API = '/api';
     const statusCycle = { TODO: 'IN_PROGRESS', IN_PROGRESS: 'DONE', DONE: 'TODO' };
+
+    function updateGreeting() {
+        const h = new Date().getHours();
+        const emoji = h < 12 ? '🌅' : h < 17 ? '☀️' : '🌙';
+        document.getElementById('greeting').textContent = `Good ${h < 12 ? 'Morning' : h < 17 ? 'Afternoon' : 'Evening'} ${emoji}`;
+    }
+    updateGreeting();
+    setInterval(updateGreeting, 60000);
 
     // Dragging state
     let draggedCard = null;       // the card DOM element being dragged
